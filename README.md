@@ -79,6 +79,8 @@ python main.py
 
 GNU General Public License v3.0
 
+> **Disclaimer:** This project is not affiliated with or endorsed by Meshtastic LLC.
+
 ---
 
 ## Authors
