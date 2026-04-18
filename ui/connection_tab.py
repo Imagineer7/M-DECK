@@ -53,6 +53,8 @@ def create_connection_tab(page: ft.Page):
     # --- Connected info ---
     connected_port_text = ft.Text("", size=14, color=ft.Colors.GREY_400)
     connection_type_text = ft.Text("", size=12, color=ft.Colors.GREY_500)
+    debug_hint_text = ft.Text("Debug log: logs/mdeck.log", size=12, color=ft.Colors.GREY_500)
+    last_error_text = ft.Text("", size=12, color=ft.Colors.RED_300, selectable=True)
 
     # --- Update UI ---
     def update_connection_status():
@@ -64,13 +66,23 @@ def create_connection_tab(page: ft.Page):
             info = handler.get_connected_port()
             connected_port_text.value = f"Connected to: {info}" if info else "Connected (unknown)"
             connection_type_text.value = f"Connection type: {'Network' if connection_type_val=='network' else 'Serial'}"
+            last_error_text.value = ""
         else:
             status_text.value = "Disconnected"
             status_icon.color = ft.Colors.RED_400
             status_indicator.bgcolor = ft.Colors.RED_900
             connected_port_text.value = ""
             connection_type_text.value = ""
+            last_error = handler.get_last_error()
+            last_error_text.value = f"Last error: {last_error}" if last_error else ""
         page.update()
+
+    async def refresh_connection_ui():
+        try:
+            update_connection_status()
+            refresh_all_tabs()
+        except RuntimeError as ex:
+            print(f"Connection UI refresh skipped: {ex}")
 
     # --- Refresh all tabs ---
     def refresh_all_tabs():
@@ -82,7 +94,13 @@ def create_connection_tab(page: ft.Page):
                     print(f"Tab refresh error: {e}")
 
     # Register the callback for auto-refresh
-    handler.register_callback(lambda: (update_connection_status(), refresh_all_tabs()))
+    def connection_state_changed():
+        try:
+            page.run_task(refresh_connection_ui)
+        except RuntimeError as ex:
+            print(f"Connection callback skipped: {ex}")
+
+    handler.register_callback(connection_state_changed)
 
     # --- Scan serial ports ---
     def scan_ports(e=None):
@@ -103,6 +121,7 @@ def create_connection_tab(page: ft.Page):
                     show_snackbar(page, "No serial ports found.", success=False)
             except Exception as ex:
                 show_snackbar(page, f"Scan error: {ex}", success=False)
+                last_error_text.value = f"Scan error: {ex}"
             finally:
                 port_dropdown.disabled = False
                 page.update()
@@ -134,6 +153,9 @@ def create_connection_tab(page: ft.Page):
                     show_snackbar(page, f"Connected to {ip}:{portnum}", success=True)
             except Exception as ex:
                 show_snackbar(page, f"Connection failed: {ex}", success=False)
+                last_error = handler.get_last_error()
+                last_error_text.value = f"Last error: {last_error}" if last_error else f"Connection failed: {ex}"
+                page.update()
 
         threading.Thread(target=_connect, daemon=True).start()
 
@@ -149,6 +171,8 @@ def create_connection_tab(page: ft.Page):
                 show_snackbar(page, "Disconnected", success=True)
             except Exception as ex:
                 show_snackbar(page, f"Disconnect error: {ex}", success=False)
+                last_error_text.value = f"Disconnect error: {ex}"
+                page.update()
 
         threading.Thread(target=_disconnect, daemon=True).start()
 
@@ -172,6 +196,8 @@ def create_connection_tab(page: ft.Page):
         ], alignment="spaceBetween"),
         ft.Container(content=ft.Column([status_indicator, connected_port_text, connection_type_text]),
                      padding=20, bgcolor=ft.Colors.GREY_900, border_radius=10, margin=ft.margin.only(bottom=20)),
+        ft.Container(content=ft.Column([debug_hint_text, last_error_text], spacing=4),
+                     padding=15, bgcolor=ft.Colors.GREY_900, border_radius=10, margin=ft.margin.only(bottom=20)),
         ft.Container(content=ft.Column([
             ft.Text("Connection Type", size=18, weight="bold", color=ft.Colors.WHITE),
             connection_type,
